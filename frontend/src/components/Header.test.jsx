@@ -1,9 +1,9 @@
 /** Verify public navigation and its route-active, event-only behavior. */
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { Header } from './Header.jsx';
+import { Header, AUTH_EVENT, SESSION_ERROR } from './Header.jsx';
 
 /** Expose the current route as an observable navigation outcome. */
 function Location() {
@@ -24,6 +24,53 @@ function renderHeader(path = '/') {
 }
 
 describe('Header', () => {
+  it.each([undefined, true, 1, {}, []])('denies nonstring session response %j', (value) => {
+    vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(value);
+    renderHeader();
+    expect(screen.getByRole('link', { name: 'Login' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Logout' })).not.toBeInTheDocument();
+  });
+  it.each([null, 'false', 'True', 'TRUE', '1', 'true '])('shows Login for nonexact session %j', (value) => {
+    if (value !== null) sessionStorage.setItem('hirehub_admin_auth', value);
+    renderHeader();
+    expect(screen.getByRole('link', { name: 'Login' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Logout' })).not.toBeInTheDocument();
+  });
+
+  it('fails closed on denied session reads', () => {
+    vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => { throw new Error('denied'); });
+    renderHeader();
+    expect(screen.getByRole('link', { name: 'Login' })).toBeVisible();
+  });
+
+  it('reflects login events and removes only auth on user logout, navigating home', async () => {
+    sessionStorage.setItem('unrelated', 'keep');
+    localStorage.setItem('hirehub_submissions', '[]');
+    renderHeader('/admin');
+    act(() => {
+      sessionStorage.setItem('hirehub_admin_auth', 'true');
+      window.dispatchEvent(new Event(AUTH_EVENT));
+    });
+    expect(screen.queryByRole('link', { name: 'Login' })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('hirehub_admin_auth')).toBe('true');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Logout' }));
+    expect(screen.getByLabelText('Current route')).toHaveTextContent(/^\/$/);
+    expect(sessionStorage.getItem('hirehub_admin_auth')).toBeNull();
+    expect(sessionStorage.getItem('unrelated')).toBe('keep');
+    expect(localStorage.getItem('hirehub_submissions')).toBe('[]');
+    expect(screen.getByRole('link', { name: 'Login' })).toBeVisible();
+  });
+
+  it.each(['remove', 'missing', 'getter'])('reports %s logout denial without falsely navigating home', async (mode) => {
+    sessionStorage.setItem('hirehub_admin_auth', 'true');
+    renderHeader('/admin');
+    if (mode === 'remove') vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('private'); });
+    if (mode === 'missing') vi.spyOn(window, 'sessionStorage', 'get').mockReturnValue(undefined);
+    if (mode === 'getter') vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => { throw new Error('private'); });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Logout' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(SESSION_ERROR);
+    expect(screen.getByLabelText('Current route')).toHaveTextContent('/admin');
+  });
   /** Verify every public destination and the unauthenticated login link. */
   it('renders HireHub, three inline navigation links, and Login', () => {
     renderHeader();

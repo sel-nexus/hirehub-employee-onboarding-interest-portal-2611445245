@@ -18,6 +18,59 @@ function renderApp(path = '/') {
 }
 
 describe('App', () => {
+  it('keeps real route login visible when the session write is denied', async () => {
+    const user = userEvent.setup();
+    renderApp('/admin');
+    await user.type(screen.getByLabelText('Username'), 'admin');
+    await user.type(screen.getByLabelText('Password'), 'admin');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
+    await user.click(screen.getByRole('button', { name: 'Login' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Browser session storage is unavailable. Please allow session storage and try again.');
+    expect(screen.getByRole('heading', { name: 'Admin Login' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Submissions Dashboard' })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('hirehub_admin_auth')).toBeNull();
+  });
+  it.each([null, 'false', 'TRUE', 'true '])('renders real login at /admin for session %j without repairing records', (value) => {
+    if (value !== null) sessionStorage.setItem('hirehub_admin_auth', value);
+    localStorage.setItem('hirehub_submissions', '{broken');
+    renderApp('/admin');
+    expect(screen.getByRole('heading', { name: 'Admin Login' })).toBeVisible();
+    expect(localStorage.getItem('hirehub_submissions')).toBe('{broken');
+  });
+
+  it.each(['header', 'dashboard'])('logs in on the same route and logs out through %s preserving unrelated data', async (source) => {
+    localStorage.setItem('hirehub_submissions', '[]');
+    sessionStorage.setItem('unrelated', 'keep');
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByRole('link', { name: 'Login' }));
+    await user.type(screen.getByLabelText('Username'), 'admin');
+    await user.type(screen.getByLabelText('Password'), 'admin');
+    await user.click(screen.getByRole('button', { name: 'Login' }));
+    expect(screen.getByRole('heading', { name: 'Submissions Dashboard' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('aria-current', 'page');
+    const buttons = screen.getAllByRole('button', { name: 'Logout' });
+    await user.click(buttons[source === 'header' ? 0 : 1]);
+    expect(screen.getByRole('heading', { name: 'Build Your Future With Us' })).toBeVisible();
+    expect(sessionStorage.getItem('hirehub_admin_auth')).toBeNull();
+    expect(sessionStorage.getItem('unrelated')).toBe('keep');
+    expect(localStorage.getItem('hirehub_submissions')).toBe('[]');
+    await user.click(screen.getByRole('link', { name: 'Admin' }));
+    expect(screen.getByRole('heading', { name: 'Admin Login' })).toBeVisible();
+  });
+
+  it('re-evaluates exact authorization on later route entries', async () => {
+    const user = userEvent.setup();
+    renderApp('/admin');
+    await user.click(screen.getByRole('link', { name: 'Home' }));
+    sessionStorage.setItem('hirehub_admin_auth', 'true');
+    await user.click(screen.getByRole('link', { name: 'Admin' }));
+    expect(screen.getByRole('heading', { name: 'Submissions Dashboard' })).toBeVisible();
+    await user.click(screen.getByRole('link', { name: 'Home' }));
+    sessionStorage.setItem('hirehub_admin_auth', 'false');
+    await user.click(screen.getByRole('link', { name: 'Admin' }));
+    expect(screen.getByRole('heading', { name: 'Admin Login' })).toBeVisible();
+  });
   /** Verify Home includes the shared shell, skip link, and honest demo limitation. */
   it('renders Home and the browser-only demo notice', () => {
     renderApp();
@@ -29,7 +82,7 @@ describe('App', () => {
   });
 
   /** Verify unfinished routes are not represented as functioning forms. */
-  it.each(['/admin', '/unknown/deep', '/application'])('renders ordinary Not Found at %s without mutations', (path) => {
+  it.each(['/unknown/deep', '/application'])('renders ordinary Not Found at %s without mutations', (path) => {
     localStorage.setItem('hirehub_submissions', '{broken synthetic data');
     localStorage.setItem('unrelated', 'preserve-local');
     sessionStorage.setItem('hirehub_admin_auth', 'true');
