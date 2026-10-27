@@ -1,6 +1,6 @@
 /** Verify persistence through real browser state readback and injected storage failures. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { STORAGE_KEY, addSubmission, getSubmissions, isEmailDuplicate, saveSubmissions } from './storage.js';
+import { STORAGE_KEY, addSubmission, getSubmissions, isEmailDuplicate, saveSubmissions, updateSubmission, deleteSubmission } from './storage.js';
 
 const input = { fullName: ' Jane Doe ', email: ' Jane@Example.com ', mobile: '0123456789', department: 'Engineering' };
 const row = { id: '550e8400-e29b-41d4-a716-446655440000', ...input, fullName: 'Jane Doe', submittedAt: '2026-03-04T10:30:00.000Z' };
@@ -129,3 +129,100 @@ describe('interest storage', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
+
+const secondRow = { ...row, id: '650e8400-e29b-41d4-a716-446655440000', email: 'other@example.com' };
+const draft = { fullName: ' Jane Lee ', mobile: '9876543210', department: 'Design' };
+
+describe('maintenance storage', () => {
+  beforeEach(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([row, secondRow]));
+    localStorage.setItem('unrelated', 'keep');
+  });
+  it('updates a freshly re-read exact ID preserving immutable fields and unrelated rows', () => {
+    const latest = { ...secondRow, fullName: 'Other Person' };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([latest, row]));
+    const result = updateSubmission(row.id, { ...draft, email: secondRow.email, id: secondRow.id, submittedAt: 'bad', extra: true });
+    expect(result).toEqual({ ok: true, value: { ...row, ...draft, fullName: 'Jane Lee' } });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY))).toEqual([latest, result.value]);
+    expect(getSubmissions().value).toEqual([latest, result.value]);
+    expect(localStorage.getItem('unrelated')).toBe('keep');
+    expect(row.fullName).toBe('Jane Doe');
+  });
+  it('deletes only the exact ID from fresh storage and returns committed null', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([secondRow, row]));
+    expect(deleteSubmission(row.id)).toEqual({ ok: true, value: null });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY))).toEqual([secondRow]);
+    expect(getSubmissions().value).toEqual([secondRow]);
+    expect(localStorage.getItem('unrelated')).toBe('keep');
+    expect(deleteSubmission(secondRow.id)).toEqual({ ok: true, value: null });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('[]');
+  });
+  it.each([undefined, null, [], {}, { ...draft, fullName: '' }, { ...draft, fullName: 'Jane!' }, { ...draft, fullName: 'A'.repeat(101) }, { ...draft, fullName: 4 }, { ...draft, mobile: '123' }, { ...draft, mobile: 1234567890 }, { ...draft, department: 'Legal' }])('rejects invalid edit %j with no write', (changes) => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    expect(updateSubmission(row.id, changes).error.code).toBe('INVALID_RECORD');
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+  });
+  it.each([undefined, null, 0, {}, row.id.toUpperCase(), ' ' + row.id, row.email, 'missing'])('never matches nonexact ID %j', (id) => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    for (const result of [updateSubmission(id, draft), deleteSubmission(id)]) {
+      expect(result).toEqual({ ok: false, error: { code: 'NOT_FOUND', message: 'The selected submission is no longer available.' } });
+    }
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+  });
+  it('does not initialize missing storage when either target is absent', () => {
+    localStorage.removeItem(STORAGE_KEY);
+    expect(updateSubmission(row.id, draft).error.code).toBe('NOT_FOUND');
+    expect(deleteSubmission(row.id).error.code).toBe('NOT_FOUND');
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+  it('reports denied reads with no mutation and reads prior state after restoration', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('private'); });
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    expect(updateSubmission(row.id, draft).error.code).toBe('STORAGE_UNAVAILABLE');
+    expect(deleteSubmission(row.id).error.code).toBe('STORAGE_UNAVAILABLE');
+    expect(set).not.toHaveBeenCalled();
+    get.mockRestore();
+    expect(getSubmissions().value).toEqual([row, secondRow]);
+  });
+  it.each(['SecurityError', 'QuotaExceededError', 'NS_ERROR_DOM_QUOTA_REACHED', 'Error'])('retains every row after %s update and delete writes', (name) => {
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('private', name); });
+    const code = name === 'SecurityError' ? 'STORAGE_UNAVAILABLE' : name === 'Error' ? 'WRITE_FAILED' : 'STORAGE_QUOTA';
+    expect(updateSubmission(row.id, draft).error.code).toBe(code);
+    expect(deleteSubmission(row.id).error.code).toBe(code);
+    set.mockRestore();
+    expect(getSubmissions().value).toEqual([row, secondRow]);
+    expect(localStorage.getItem('unrelated')).toBe('keep');
+  });
+  it.each(['update', 'delete'])('propagates failed corruption repair during %s', (mode) => {
+    localStorage.setItem(STORAGE_KEY, '{broken');
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+    const result = mode === 'update' ? updateSubmission(row.id, draft) : deleteSubmission(row.id);
+    expect(result.error.code).toBe('WRITE_FAILED');
+    set.mockRestore();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('{broken');
+  });
+});
+
+ it.each(['update', 'delete'])('recovers malformed storage then reports missing target for %s without inventing a row', (mode) => {
+   localStorage.setItem(STORAGE_KEY, '{broken');
+   localStorage.setItem('other', 'keep');
+   const result = mode === 'update' ? updateSubmission(row.id, draft) : deleteSubmission(row.id);
+   expect(result.error.code).toBe('NOT_FOUND');
+   expect(localStorage.getItem(STORAGE_KEY)).toBe('[]');
+   expect(localStorage.getItem('other')).toBe('keep');
+ });
+ it('accepts edit boundaries without changing identity and ignores immutable-only input without a write', () => {
+   saveSubmissions([row, secondRow]);
+   const result = updateSubmission(row.id, { fullName: 'A'.repeat(100), mobile: '0000000000', department: 'Data Science' });
+   expect(result.ok).toBe(true);
+   expect(getSubmissions().value).toEqual([{ ...row, fullName: 'A'.repeat(100), mobile: '0000000000', department: 'Data Science' }, secondRow]);
+   const raw = localStorage.getItem(STORAGE_KEY);
+   const set = vi.spyOn(Storage.prototype, 'setItem');
+   expect(updateSubmission(row.id, { email: 'changed@example.com', id: secondRow.id, submittedAt: 'bad' }).error.code).toBe('INVALID_RECORD');
+   expect(set).not.toHaveBeenCalled();
+   expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+ });

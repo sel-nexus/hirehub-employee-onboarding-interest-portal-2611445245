@@ -1,4 +1,5 @@
 /** Verify read-only table order, capacity, escaped strings and damaged dates. */
+import userEvent from '@testing-library/user-event';
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import SubmissionTable, { formatSubmissionDate, submissionTime } from './SubmissionTable.jsx';
@@ -21,7 +22,7 @@ describe('SubmissionTable', () => {
     const view = render(<SubmissionTable submissions={records} />);
     expect(screen.getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['#', 'Full Name', 'Email', 'Mobile', 'Department', 'Submitted On', 'Actions']);
     const rows = screen.getAllByRole('row');
-    expect(within(rows[1]).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['1', 'Test Person', 'test@example.com', '0123456789', 'Engineering', 'Mar 4, 2026', '—']);
+    expect(within(rows[1]).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['1', 'Test Person', 'test@example.com', '0123456789', 'Engineering', 'Mar 4, 2026', 'EditDelete']);
     expect(within(rows[2]).getByText(malicious)).toBeVisible();
     expect(view.container.querySelector('img')).toBeNull();
     expect(within(rows[2]).getByText('N/A')).toBeVisible();
@@ -30,7 +31,7 @@ describe('SubmissionTable', () => {
     view.rerender(<SubmissionTable submissions={records} />);
     expect(JSON.stringify(records)).toBe(original);
     expect(set).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button').every((button) => button.disabled)).toBe(true);
   });
 
   it('renders all 200 rows with final numbering and preserves input order', () => {
@@ -52,3 +53,21 @@ describe('SubmissionTable', () => {
     expect(formatSubmissionDate('2026-03-04T00:00:00.000Z')).toBe('Mar 4, 2026');
   });
 });
+
+ it('dispatches selected row and exact ID only after mouse or keyboard activation', async () => {
+   const edit = vi.fn();
+   const remove = vi.fn();
+   const records = [row, { ...row, id: 'second', email: 'second@example.com' }];
+   const raw = JSON.stringify(records);
+   const view = render(<SubmissionTable submissions={records} onEdit={edit} onDelete={remove} />);
+   view.rerender(<SubmissionTable submissions={records} onEdit={edit} onDelete={remove} />);
+   expect(edit).not.toHaveBeenCalled();
+   expect(remove).not.toHaveBeenCalled();
+   const user = userEvent.setup();
+   await user.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+   expect(edit).toHaveBeenCalledWith(records[1]);
+   screen.getAllByRole('button', { name: 'Delete' })[0].focus();
+   await user.keyboard('{Enter}');
+   expect(remove).toHaveBeenCalledWith(row.id);
+   expect(JSON.stringify(records)).toBe(raw);
+ });

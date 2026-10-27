@@ -10,6 +10,7 @@ const MESSAGES = {
   INVALID_RECORD: 'Please check the submission details and try again.',
   DUPLICATE_EMAIL: 'This email has already been submitted.',
   WRITE_FAILED: 'Your interest could not be saved. Please try again.',
+  NOT_FOUND: 'The selected submission is no longer available.',
 };
 
 /** Build a safe failure result.
@@ -143,4 +144,39 @@ export function addSubmission(input) {
   }
   const saved = saveSubmissions([...existing.value, record]);
   return saved.ok ? { ok: true, value: record } : saved;
+}
+
+/** Re-read and update only the exact selected ID, ignoring immutable/unknown fields.
+ * @param {string} id - Exact stored identifier; never normalized.
+ * @param {object} changes - Complete editable name, mobile and department draft.
+ * @returns {object} Committed row or explicit validation/read/write/missing failure.
+ */
+export function updateSubmission(id, changes) {
+  const existing = getSubmissions();
+  if (!existing.ok) return existing;
+  const index = existing.value.findIndex((row) => row.id === id);
+  if (index === -1) return failure('NOT_FOUND');
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return failure('INVALID_RECORD');
+  const record = {
+    ...existing.value[index],
+    fullName: changes.fullName,
+    mobile: changes.mobile,
+    department: changes.department,
+  };
+  if (Object.keys(validateSubmission(record)).length) return failure('INVALID_RECORD');
+  record.fullName = record.fullName.trim();
+  const records = existing.value.map((row, position) => position === index ? record : row);
+  const saved = saveSubmissions(records);
+  return saved.ok ? { ok: true, value: record } : saved;
+}
+
+/** Re-read and remove only an exact selected ID after the caller confirms.
+ * @param {string} id - Exact stored identifier; never normalized or coerced.
+ * @returns {object} Committed null value or explicit read/write/missing failure.
+ */
+export function deleteSubmission(id) {
+  const existing = getSubmissions();
+  if (!existing.ok) return existing;
+  if (!existing.value.some((row) => row.id === id)) return failure('NOT_FOUND');
+  return saveSubmissions(existing.value.filter((row) => row.id !== id));
 }

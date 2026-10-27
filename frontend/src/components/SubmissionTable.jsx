@@ -23,11 +23,11 @@ export function formatSubmissionDate(value) {
     : 'N/A';
 }
 
-/** Render ordered rows and the honest empty state; maintenance actions are not yet enabled.
+/** Render ordered rows and the honest empty state; actions fire only on user activation.
  * @param {object} props - Loaded submission snapshot.
- * @returns {JSX.Element} Scrollable, read-only table card.
+ * @returns {JSX.Element} Scrollable table card with explicit actions.
  */
-export default function SubmissionTable({ submissions }) {
+export default function SubmissionTable({ submissions, onEdit, onDelete }) {
   return (
     <div className="table-card">
       {submissions.length === 0 ? (
@@ -54,7 +54,12 @@ export default function SubmissionTable({ submissions }) {
                     <span className="department-badge">{row.department}</span>
                   </td>
                   <td>{formatSubmissionDate(row.submittedAt)}</td>
-                  <td aria-label="No actions available">—</td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="action-button" type="button" disabled={!onEdit} onClick={() => onEdit(row)}>Edit</button>
+                      <button className="action-button action-delete" type="button" disabled={!onDelete} onClick={() => onDelete(row.id)}>Delete</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -66,6 +71,8 @@ export default function SubmissionTable({ submissions }) {
 }
 
 SubmissionTable.propTypes = {
+  onEdit: PropTypes.func,
+  onDelete: PropTypes.func,
   submissions: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string.isRequired,
     fullName: PropTypes.string.isRequired,

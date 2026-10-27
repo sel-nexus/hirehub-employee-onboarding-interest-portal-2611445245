@@ -203,3 +203,22 @@ main { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   .cta-link, .login-link { transition: none; }
 }
+
+/* Submission maintenance extends the existing light, blue form language. */
+.row-actions, .modal-actions { display: flex; gap: 8px; align-items: center; }
+.action-button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-card); color: var(--color-primary); font: inherit; cursor: pointer; }
+.action-button:hover { background: var(--color-primary-light); }
+.action-button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 3px; }
+.action-button:disabled { opacity: 0.6; cursor: not-allowed; }
+.action-delete { color: var(--color-danger); }
+.edit-modal { width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-card); color: var(--color-text); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); overflow-y: auto; }
+.edit-modal::backdrop { background: rgba(15, 23, 42, 0.55); }
+.edit-modal-content { padding: 32px; }
+.edit-modal h2 { margin-bottom: 24px; }
+.edit-email-note { font-size: 13px; color: var(--color-text-muted); }
+.edit-modal input[readonly] { background: var(--color-bg); }
+.modal-actions { justify-content: flex-end; }
+.modal-actions .submit-button { width: auto; padding-inline: 20px; }
+@media (max-width: 767px) {
+  .edit-modal-content { padding: 20px; }
+}
