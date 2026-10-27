@@ -53,6 +53,33 @@ describe('interest storage', () => {
     expect(set).not.toHaveBeenCalled();
     expect(uuid).not.toHaveBeenCalled();
   });
+  it.each(['fullName', 'email', 'mobile', 'department'])('rejects create omitting only %s without a write', (field) => {
+    const invalid = { ...input };
+    delete invalid[field];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([row]));
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    expect(addSubmission(invalid)).toEqual({ ok: false, error: { code: 'INVALID_RECORD', message: 'Please check the submission details and try again.' } });
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+  });
+  it.each(['bad', '', '2026-02-30T10:30:00.000Z', '2026-03-04'])('retains damaged string timestamp %j alongside valid rows without a cleanup write', (submittedAt) => {
+    const damaged = { ...row, id: '650e8400-e29b-41d4-a716-446655440000', email: 'legacy@example.com', department: 'Design', submittedAt };
+    const records = [row, damaged];
+    const raw = JSON.stringify(records, null, 2);
+    localStorage.setItem(STORAGE_KEY, raw);
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    expect(getSubmissions()).toEqual({ ok: true, value: records });
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+    expect(saveSubmissions(records).error.code).toBe('INVALID_RECORD');
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+    const added = addSubmission({ ...input, email: 'new@example.com' });
+    expect(added.ok).toBe(true);
+    expect(new Date(added.value.submittedAt).toISOString()).toBe(added.value.submittedAt);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY))).toEqual([...records, added.value]);
+  });
   it('implements duplicate lookup with exclusion and fail-closed invalid input', () => {
     saveSubmissions([row]);
     expect(isEmailDuplicate('JANE@example.com')).toBe(true);
@@ -62,7 +89,7 @@ describe('interest storage', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('private', 'SecurityError'); });
     expect(isEmailDuplicate('other@example.com')).toBe(true);
   });
-  it.each(['{broken', '{}', 'null', '42', '"text"', '[null]', JSON.stringify([{ ...row, extra: true }]), JSON.stringify([{ ...row, id: undefined }]), JSON.stringify([{ ...row, id: 'not-uuid' }]), JSON.stringify([{ ...row, submittedAt: 'bad' }]), JSON.stringify([{ ...row, submittedAt: '2026-02-30T10:30:00.000Z' }]), JSON.stringify([{ ...row, submittedAt: 3 }]), JSON.stringify([{ ...row, fullName: ' Jane Doe ' }]), JSON.stringify([{ ...row, mobile: 1234567890 }]), JSON.stringify([{ ...row, department: 'Legal' }]), JSON.stringify([row, row])])('resets corrupt shape/value %s', (raw) => {
+  it.each(['{broken', '{}', 'null', '42', '"text"', '[null]', JSON.stringify([{ ...row, extra: true }]), JSON.stringify([{ ...row, id: undefined }]), JSON.stringify([{ ...row, id: 'not-uuid' }]), ...[undefined, null, 3, true, {}, []].map((submittedAt) => JSON.stringify([{ ...row, submittedAt }])), JSON.stringify([{ ...row, fullName: ' Jane Doe ' }]), JSON.stringify([{ ...row, mobile: 1234567890 }]), JSON.stringify([{ ...row, department: 'Legal' }]), JSON.stringify([row, row])])('resets corrupt shape/value %s', (raw) => {
     localStorage.setItem(STORAGE_KEY, raw);
     localStorage.setItem('other', 'keep');
     expect(getSubmissions()).toEqual({ ok: true, value: [] });
@@ -156,6 +183,32 @@ describe('maintenance storage', () => {
     expect(localStorage.getItem('unrelated')).toBe('keep');
     expect(deleteSubmission(secondRow.id)).toEqual({ ok: true, value: null });
     expect(localStorage.getItem(STORAGE_KEY)).toBe('[]');
+  });
+  it.each(['fullName', 'mobile', 'department'])('rejects edit omitting only %s for an existing ID without a write', (field) => {
+    const changes = { ...draft };
+    delete changes[field];
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    expect(updateSubmission(row.id, changes)).toEqual({ ok: false, error: { code: 'INVALID_RECORD', message: 'Please check the submission details and try again.' } });
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+  });
+  it.each(['bad', '2026-02-30T10:30:00.000Z'])('edits and deletes by ID while preserving existing damaged timestamp %s', (submittedAt) => {
+    const damaged = { ...row, submittedAt };
+    const otherDamaged = { ...secondRow, submittedAt: '' };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([damaged, otherDamaged]));
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    const updated = { ...damaged, ...draft, fullName: 'Jane Lee' };
+    expect(updateSubmission(row.id, draft)).toEqual({ ok: true, value: updated });
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY))).toEqual([updated, otherDamaged]);
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(deleteSubmission(row.id)).toEqual({ ok: true, value: null });
+    expect(getSubmissions()).toEqual({ ok: true, value: [otherDamaged] });
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(deleteSubmission(secondRow.id)).toEqual({ ok: true, value: null });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('[]');
+    expect(set).toHaveBeenCalledTimes(3);
+    expect(localStorage.getItem('unrelated')).toBe('keep');
   });
   it.each([undefined, null, [], {}, { ...draft, fullName: '' }, { ...draft, fullName: 'Jane!' }, { ...draft, fullName: 'A'.repeat(101) }, { ...draft, fullName: 4 }, { ...draft, mobile: '123' }, { ...draft, mobile: 1234567890 }, { ...draft, department: 'Legal' }])('rejects invalid edit %j with no write', (changes) => {
     const raw = localStorage.getItem(STORAGE_KEY);

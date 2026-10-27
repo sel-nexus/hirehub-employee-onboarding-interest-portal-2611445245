@@ -1,5 +1,5 @@
 /** Verify real form-to-review wiring and empty/populated mobile table states. */
-import { test, expect } from './fixtures.js';
+import { test, expect, capturePreflight } from './fixtures.js';
 
 /** Sign in through visible links and the real demo form. */
 async function login(page) {
@@ -10,7 +10,7 @@ async function login(page) {
   await expect(page.getByRole('heading', { name: 'Submissions Dashboard' })).toBeVisible();
 }
 
-test('candidate form submission appears after demo login without review mutations', async ({ page }) => {
+test('candidate form submission appears after demo login without review mutations', async ({ page }, testInfo) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Express Your Interest' }).click();
   await page.getByLabel('Full Name', { exact: true }).fill('Test Person');
@@ -25,6 +25,7 @@ test('candidate form submission appears after demo login without review mutation
   await expect(page.locator('.stat-total strong')).toHaveText('1');
   await expect(page.locator('.stat-departments strong')).toHaveText('1');
   await expect(page.getByRole('columnheader')).toHaveText(['#', 'Full Name', 'Email', 'Mobile', 'Department', 'Submitted On', 'Actions']);
+  await capturePreflight(page, testInfo, 'dashboard-populated');
   await page.reload();
   await expect(page.getByRole('cell', { name: 'journey@example.com' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('hirehub_submissions'))).toBe(raw);
@@ -45,6 +46,7 @@ test('empty dashboard displays exact state and stacked mobile metrics', async ({
     expect(second.y).toBeGreaterThan(first.y + first.height);
     expect(second.x).toBe(first.x);
   }
+  await capturePreflight(page, testInfo, 'dashboard-empty');
 });
 
 test('all 200 synthetic valid rows render with metrics and mobile horizontal scrolling', async ({ page }, testInfo) => {

@@ -93,12 +93,41 @@ describe('AdminDashboard', () => {
     expect(screen.getByText('No submissions yet.')).toBeVisible();
   });
 
-  it.each(['{broken', '{}', '[null]', JSON.stringify([makeRow(1, 'Design', 'damaged')])])('uses the real storage recovery for malformed data %s', (raw) => {
+  it.each(['{broken', '{}', '[null]', ...[null, 3, true, {}, []].map((date) => JSON.stringify([makeRow(1, 'Design', date)]))])('uses the real storage recovery for malformed data %s', (raw) => {
     sessionStorage.setItem('hirehub_admin_auth', 'true');
     localStorage.setItem('hirehub_submissions', raw);
     dashboard();
     expect(localStorage.getItem('hirehub_submissions')).toBe('[]');
     expect(screen.getByText('No submissions yet.')).toBeVisible();
+  });
+
+  it.each([true, false])('retains real damaged-string rows with valid dates present: %s', (includeValid) => {
+    sessionStorage.setItem('hirehub_admin_auth', 'true');
+    const damaged = [makeRow(1, 'Design', 'damaged'), makeRow(2, 'Marketing', '2099-02-30T10:30:00.000Z'), makeRow(3, 'Design', '')];
+    const records = includeValid ? [makeRow(4), ...damaged, makeRow(5, 'Engineering', '2026-05-01T10:30:00.000Z')] : damaged;
+    const raw = JSON.stringify(records, null, 2);
+    localStorage.setItem('hirehub_submissions', raw);
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    const view = dashboard();
+    expect(metric('Total Submissions')).toBe(String(records.length));
+    expect(metric('Departments')).toBe(includeValid ? '3' : '2');
+    expect(metric('Latest Submission')).toBe(includeValid ? 'May 1, 2026' : 'N/A');
+    expect(screen.queryByText('No submissions yet.')).not.toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(records.length);
+    records.forEach((record, index) => {
+      expect(within(rows[index]).getByRole('cell', { name: record.email })).toBeVisible();
+      expect(within(rows[index]).getByRole('cell', { name: record.department })).toBeVisible();
+      const date = damaged.includes(record) ? 'N/A' : record.id === makeRow(4).id ? 'Mar 4, 2026' : 'May 1, 2026';
+      expect(within(rows[index]).getByRole('cell', { name: date })).toBeVisible();
+    });
+    view.rerender(
+      <React.StrictMode>
+        <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AdminDashboard /></MemoryRouter>
+      </React.StrictMode>,
+    );
+    expect(set).not.toHaveBeenCalled();
+    expect(localStorage.getItem('hirehub_submissions')).toBe(raw);
   });
 
   it.each(['read', 'repair'])('shows %s failure instead of false empty success', (mode) => {

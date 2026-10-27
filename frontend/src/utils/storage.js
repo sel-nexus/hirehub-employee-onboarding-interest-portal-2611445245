@@ -32,7 +32,7 @@ function writeFailure(error) {
   return failure(error?.name === 'SecurityError' ? 'STORAGE_UNAVAILABLE' : 'WRITE_FAILED');
 }
 
-/** Check the exact persisted shape and all record invariants.
+/** Check the exact readable shape, retaining damaged string dates for presentation.
  * @param {unknown} record - Parsed or proposed record.
  * @returns {boolean} Whether this is a usable six-field record.
  */
@@ -41,6 +41,16 @@ function validRecord(record) {
   if (Object.keys(record).length !== RECORD_FIELDS.length || !RECORD_FIELDS.every((key) => Object.hasOwn(record, key))) return false;
   if (Object.keys(validateSubmission(record)).length || record.fullName !== record.fullName.trim()) return false;
   if (typeof record.id !== 'string' || !UUID.test(record.id)) return false;
+  return typeof record.submittedAt === 'string';
+}
+
+/** Require a canonical, usable timestamp for newly supplied records.
+ * Args:
+ *   record: Record whose timestamp must be valid before strict persistence.
+ * Returns:
+ *   Whether the timestamp round-trips without date normalization.
+ */
+function validTimestamp(record) {
   if (typeof record.submittedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(record.submittedAt)) return false;
   const date = new Date(record.submittedAt);
   return !Number.isNaN(date.getTime()) && date.toISOString() === record.submittedAt;
@@ -64,11 +74,22 @@ function validRecords(records) {
     && new Set(records.map((row) => emailKey(row.email))).size === records.length;
 }
 
-/** Write a validated snapshot; never return success before the browser write completes.
+/** Strictly validate a replacement snapshot, including every supplied timestamp.
  * @param {unknown} records - Complete six-field collection.
- * @returns {object} Success with null value, or safe failure.
+ * @returns {object} Committed null value or safe failure.
  */
 export function saveSubmissions(records) {
+  if (!validRecords(records) || !records.every(validTimestamp)) return failure('INVALID_RECORD');
+  return writeRecords(records);
+}
+
+/** Persist a checked snapshot while retaining existing damaged string timestamps.
+ * Args:
+ *   records: Collection assembled from a validated read and explicit user changes.
+ * Returns:
+ *   Success only after the browser write completes, or a safe failure.
+ */
+function writeRecords(records) {
   if (!validRecords(records)) return failure('INVALID_RECORD');
   let store;
   try {
@@ -142,7 +163,8 @@ export function addSubmission(input) {
   } catch {
     return failure('WRITE_FAILED');
   }
-  const saved = saveSubmissions([...existing.value, record]);
+  if (!validRecord(record) || !validTimestamp(record)) return failure('INVALID_RECORD');
+  const saved = writeRecords([...existing.value, record]);
   return saved.ok ? { ok: true, value: record } : saved;
 }
 
@@ -166,7 +188,7 @@ export function updateSubmission(id, changes) {
   if (Object.keys(validateSubmission(record)).length) return failure('INVALID_RECORD');
   record.fullName = record.fullName.trim();
   const records = existing.value.map((row, position) => position === index ? record : row);
-  const saved = saveSubmissions(records);
+  const saved = writeRecords(records);
   return saved.ok ? { ok: true, value: record } : saved;
 }
 
@@ -178,5 +200,5 @@ export function deleteSubmission(id) {
   const existing = getSubmissions();
   if (!existing.ok) return existing;
   if (!existing.value.some((row) => row.id === id)) return failure('NOT_FOUND');
-  return saveSubmissions(existing.value.filter((row) => row.id !== id));
+  return writeRecords(existing.value.filter((row) => row.id !== id));
 }

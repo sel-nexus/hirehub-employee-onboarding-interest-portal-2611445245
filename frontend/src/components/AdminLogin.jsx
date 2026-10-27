@@ -38,11 +38,30 @@ export default function AdminLogin() {
         <form onSubmit={handleSubmit} noValidate>
           <div className="form-field">
             <label htmlFor="admin-username">Username</label>
-            <input id="admin-username" placeholder="Enter username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} aria-required="true" aria-invalid={Boolean(error)} aria-describedby={error ? 'admin-login-error' : undefined} />
+            <input
+              id="admin-username"
+              placeholder="Enter username"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              aria-required="true"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'admin-login-error' : undefined}
+            />
           </div>
           <div className="form-field">
             <label htmlFor="admin-password">Password</label>
-            <input id="admin-password" type="password" placeholder="Enter password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} aria-required="true" aria-invalid={Boolean(error)} aria-describedby={error ? 'admin-login-error' : undefined} />
+            <input
+              id="admin-password"
+              type="password"
+              placeholder="Enter password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              aria-required="true"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'admin-login-error' : undefined}
+            />
           </div>
           <button className="submit-button" type="submit">Login</button>
         </form>

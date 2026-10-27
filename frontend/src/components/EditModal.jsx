@@ -84,7 +84,15 @@ export default function EditModal({ submission, onSave, onCancel }) {
           )}
           <div className="form-field">
             <label htmlFor="edit-fullName">Full Name</label>
-            <input id="edit-fullName" name="fullName" value={draft.fullName} onChange={change} aria-required="true" aria-invalid={Boolean(errors.fullName)} aria-describedby={errors.fullName ? 'edit-fullName-error' : undefined} />
+            <input
+              id="edit-fullName"
+              name="fullName"
+              value={draft.fullName}
+              onChange={change}
+              aria-required="true"
+              aria-invalid={Boolean(errors.fullName)}
+              aria-describedby={errors.fullName ? 'edit-fullName-error' : undefined}
+            />
             {errors.fullName && (
               <p id="edit-fullName-error" className="field-error" role="alert">{errors.fullName}</p>
             )}
@@ -96,14 +104,31 @@ export default function EditModal({ submission, onSave, onCancel }) {
           </div>
           <div className="form-field">
             <label htmlFor="edit-mobile">Mobile Number</label>
-            <input id="edit-mobile" name="mobile" inputMode="numeric" value={draft.mobile} onChange={change} aria-required="true" aria-invalid={Boolean(errors.mobile)} aria-describedby={errors.mobile ? 'edit-mobile-error' : undefined} />
+            <input
+              id="edit-mobile"
+              name="mobile"
+              inputMode="numeric"
+              value={draft.mobile}
+              onChange={change}
+              aria-required="true"
+              aria-invalid={Boolean(errors.mobile)}
+              aria-describedby={errors.mobile ? 'edit-mobile-error' : undefined}
+            />
             {errors.mobile && (
               <p id="edit-mobile-error" className="field-error" role="alert">{errors.mobile}</p>
             )}
           </div>
           <div className="form-field">
             <label htmlFor="edit-department">Department of Interest</label>
-            <select id="edit-department" name="department" value={draft.department} onChange={change} aria-required="true" aria-invalid={Boolean(errors.department)} aria-describedby={errors.department ? 'edit-department-error' : undefined}>
+            <select
+              id="edit-department"
+              name="department"
+              value={draft.department}
+              onChange={change}
+              aria-required="true"
+              aria-invalid={Boolean(errors.department)}
+              aria-describedby={errors.department ? 'edit-department-error' : undefined}
+            >
               <option value="">Select a department</option>
               {DEPARTMENTS.map((department) => (
                 <option key={department} value={department}>{department}</option>

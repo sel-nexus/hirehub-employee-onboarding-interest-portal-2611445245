@@ -35,4 +35,14 @@ describe('validators', () => {
     expect(validateSubmission(input)).toEqual({});
     expect(validateSubmission({ ...input, mobile: 'short' })).toEqual({ mobile: validateMobile('short') });
   });
+  it.each([
+    ['fullName', 'Please enter your full name.'],
+    ['email', 'Please enter your email address.'],
+    ['mobile', 'Mobile number must contain exactly 10 digits.'],
+    ['department', 'Please select a department of interest.'],
+  ])('returns exactly the %s error when only that field is omitted', (field, message) => {
+    const input = { fullName: 'Jane Doe', email: 'jane@example.com', mobile: '0123456789', department: 'Engineering' };
+    delete input[field];
+    expect(validateSubmission(input)).toEqual({ [field]: message });
+  });
 });

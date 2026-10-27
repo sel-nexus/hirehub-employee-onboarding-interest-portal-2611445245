@@ -18,6 +18,8 @@ export default function InterestForm() {
   const [storageError, setStorageError] = useState('');
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Keep the lock stable across renders and observable before React commits state.
+  const [submissionGuard] = useState({ active: false });
 
   useEffect(
     /** Schedule dismissal only after a committed save and cancel obsolete timers. */
@@ -38,23 +40,28 @@ export default function InterestForm() {
   /** Commit only valid input and report success only after persistence completes. */
   function submit(event) {
     event.preventDefault();
-    if (submitting) return;
+    if (submissionGuard.active) return;
     setSuccess(false);
     setStorageError('');
     const fieldErrors = validateSubmission(values);
     setErrors(fieldErrors);
     if (Object.keys(fieldErrors).length) return;
+    submissionGuard.active = true;
     setSubmitting(true);
-    const result = addSubmission(values);
-    if (!result.ok) {
-      if (result.error.code === 'DUPLICATE_EMAIL') setErrors({ email: result.error.message });
-      else setStorageError(result.error.message);
-    } else {
-      setValues(EMPTY);
-      setErrors({});
-      setSuccess(result.value.id);
+    try {
+      const result = addSubmission(values);
+      if (!result.ok) {
+        if (result.error.code === 'DUPLICATE_EMAIL') setErrors({ email: result.error.message });
+        else setStorageError(result.error.message);
+      } else {
+        setValues(EMPTY);
+        setErrors({});
+        setSuccess(result.value.id);
+      }
+    } finally {
+      submissionGuard.active = false;
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }
 
   return (

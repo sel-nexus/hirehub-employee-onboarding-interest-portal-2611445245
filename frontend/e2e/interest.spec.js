@@ -14,6 +14,7 @@ test('Home to Apply validates, commits, dismisses confirmation and rejects dupli
   await page.getByRole('link', { name: 'Express Your Interest' }).click();
   await expect(page).toHaveURL(/\/apply$/);
   await expect(page.getByRole('heading', { name: 'Join Our Team' })).toBeVisible();
+  await capturePreflight(page, testInfo, 'interest-empty');
   await page.getByRole('button', { name: 'Submit Application' }).click();
   await expect(page.getByRole('alert')).toHaveCount(4);
   expect(await page.evaluate(() => localStorage.getItem('hirehub_submissions'))).toBeNull();
@@ -43,16 +44,32 @@ test('Home to Apply validates, commits, dismisses confirmation and rejects dupli
   await expect(page.getByRole('heading', { name: 'Build Your Future With Us' })).toBeVisible();
 });
 
-test('storage refusal never reports success and retains the complete draft', async ({ page }) => {
+test('storage quota exhaustion never reports success and retains the complete draft', async ({ page }, testInfo) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Apply', exact: true }).click();
   await fill(page);
-  // Inject only the browser failure boundary; keep application logic real.
-  await page.evaluate(() => {
-    Storage.prototype.setItem = function () {
-      throw new DOMException('Storage is denied for this test', 'QuotaExceededError');
-    };
+  // Fill real browser storage with synthetic non-PII data; the test context owns cleanup.
+  const quotaError = await page.evaluate(() => {
+    let index = 0;
+    let errorName;
+    // Reduce chunk size after each refusal so a small application record cannot fit.
+    for (let size = 1024 * 1024; size >= 1; size = Math.floor(size / 2)) {
+      const value = 'x'.repeat(size);
+      while (true) {
+        if (index >= 128) throw new Error('Browser storage quota was not reached within the fixture limit.');
+        try {
+          localStorage.setItem(`quota-fixture-${index}`, value);
+          index += 1;
+        } catch (error) {
+          if (error.name !== 'QuotaExceededError' && error.name !== 'NS_ERROR_DOM_QUOTA_REACHED') throw error;
+          errorName = error.name;
+          break;
+        }
+      }
+    }
+    return errorName;
   });
+  expect(['QuotaExceededError', 'NS_ERROR_DOM_QUOTA_REACHED']).toContain(quotaError);
   await page.getByRole('button', { name: 'Submit Application' }).click();
   await expect(page.getByRole('alert')).toContainText('Browser storage is full.');
   await expect(page.getByRole('status')).toHaveCount(0);
@@ -61,4 +78,5 @@ test('storage refusal never reports success and retains the complete draft', asy
   await expect(page.getByLabel('Mobile Number')).toHaveValue('0123456789');
   await expect(page.getByLabel('Department of Interest')).toHaveValue('Engineering');
   expect(await page.evaluate(() => localStorage.getItem('hirehub_submissions'))).toBeNull();
+  await capturePreflight(page, testInfo, 'interest-storage-full');
 });

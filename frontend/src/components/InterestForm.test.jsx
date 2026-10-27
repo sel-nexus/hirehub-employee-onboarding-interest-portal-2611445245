@@ -163,6 +163,57 @@ describe('InterestForm', () => {
     expect(screen.getByRole('status')).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+  it('ignores reentrant submit during a storage write and persists only one record', () => {
+    mount();
+    fill();
+    const form = screen.getByRole('button', { name: 'Submit Application' }).closest('form');
+    const write = Storage.prototype.setItem;
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      write.call(this, key, value);
+    });
+    set.mockImplementationOnce(function (key, value) {
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      fireEvent.submit(form);
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Full Name')).toHaveValue('Jane Doe');
+      write.call(this, key, value);
+    });
+    submit();
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(getSubmissions().value).toHaveLength(1);
+    expect(getSubmissions().value[0]).toMatchObject({ email: 'Jane@Example.com' });
+    expect(screen.getByRole('status')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Submit Application' })).toBeEnabled();
+  });
+  it.each(['SecurityError', 'QuotaExceededError', 'Error'])('blocks reentrant submit during %s write failure and releases the guard for a fresh retry', (name) => {
+    mount();
+    fill();
+    const form = screen.getByRole('button', { name: 'Submit Application' }).closest('form');
+    const write = Storage.prototype.setItem;
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      write.call(this, key, value);
+    });
+    set.mockImplementationOnce(() => {
+      fireEvent.submit(form);
+      throw new DOMException('private', name);
+    });
+    submit();
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Full Name')).toHaveValue('Jane Doe');
+    expect(screen.getByLabelText('Email Address')).toHaveValue('Jane@Example.com');
+    expect(screen.getByLabelText('Mobile Number')).toHaveValue('0123456789');
+    expect(screen.getByLabelText('Department of Interest')).toHaveValue('Engineering');
+    expect(screen.getByRole('button', { name: 'Submit Application' })).toBeEnabled();
+    submit();
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(getSubmissions().value).toHaveLength(1);
+    expect(getSubmissions().value[0]).toMatchObject({ fullName: 'Jane Doe', email: 'Jane@Example.com', mobile: '0123456789', department: 'Engineering' });
+    expect(screen.getByRole('status')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
   it('reports read denial without attempting a write or clearing fields', () => {
     mount();
     fill();

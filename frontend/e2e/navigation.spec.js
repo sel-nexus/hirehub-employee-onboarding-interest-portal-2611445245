@@ -44,21 +44,24 @@ for (const [path, name] of [['/', 'Home'], ['/apply', 'Apply'], ['/admin', 'Admi
 }
 
 /** Verify unknown deep routes never repair, clear, or otherwise mutate browser data. */
-test('unknown route and refresh preserve all local and session data', async ({ page }, testInfo) => {
-  await page.goto('/');
-  const before = await page.evaluate(
-    /** Seed synthetic malformed and unrelated values, then retain a full storage snapshot. */
-    () => {
-      localStorage.setItem('hirehub_submissions', '{synthetic malformed');
-      localStorage.setItem('unrelated', 'preserve-local');
-      sessionStorage.setItem('hirehub_admin_auth', 'true');
-      sessionStorage.setItem('unrelated', 'preserve-session');
-      return { local: { ...localStorage }, session: { ...sessionStorage } };
+test('unknown route and refresh preserve all local and session data', async ({ page, baseURL }, testInfo) => {
+  const before = {
+    local: { hirehub_submissions: '{synthetic malformed', unrelated: 'preserve-local' },
+    session: { hirehub_admin_auth: 'true', unrelated: 'preserve-session' },
+  };
+  await page.addInitScript(
+    /** Seed before the first app mount, without reseeding and hiding reload mutations. */
+    ({ origin, snapshot }) => {
+      if (location.origin !== origin || performance.getEntriesByType('navigation')[0]?.type === 'reload') return;
+      for (const [key, value] of Object.entries(snapshot.local)) localStorage.setItem(key, value);
+      for (const [key, value] of Object.entries(snapshot.session)) sessionStorage.setItem(key, value);
     },
+    { origin: new URL(baseURL).origin, snapshot: before },
   );
   await page.goto('/unknown/deep');
   await expect(page.getByRole('heading', { name: 'Not Found', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation').locator('[aria-current]')).toHaveCount(0);
+  expect(await page.evaluate(() => ({ local: { ...localStorage }, session: { ...sessionStorage } }))).toEqual(before);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Not Found', exact: true })).toBeVisible();
   const after = await page.evaluate(/** Read both storage areas without modifying them. */ () => ({ local: { ...localStorage }, session: { ...sessionStorage } }));
