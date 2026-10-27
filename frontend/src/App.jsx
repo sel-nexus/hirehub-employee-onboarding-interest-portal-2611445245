@@ -1,7 +1,8 @@
-/** Compose the implemented Home route and a nonmutating fallback. */
+/** Compose the implemented Home and Apply routes with a nonmutating fallback. */
 import { Link, Route, Routes } from 'react-router-dom';
 import { Header } from './components/Header.jsx';
 import LandingPage from './components/LandingPage.jsx';
+import InterestForm from './components/InterestForm.jsx';
 
 /** Offer a truthful missing-page state without simulating unfinished forms. */
 function NotFound() {
@@ -23,6 +24,7 @@ export default function App() {
       <main id="main-content" tabIndex={-1}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/apply" element={<InterestForm />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

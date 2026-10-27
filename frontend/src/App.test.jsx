@@ -29,7 +29,7 @@ describe('App', () => {
   });
 
   /** Verify unfinished routes are not represented as functioning forms. */
-  it.each(['/apply', '/admin', '/unknown/deep', '/application'])('renders ordinary Not Found at %s without mutations', (path) => {
+  it.each(['/admin', '/unknown/deep', '/application'])('renders ordinary Not Found at %s without mutations', (path) => {
     localStorage.setItem('hirehub_submissions', '{broken synthetic data');
     localStorage.setItem('unrelated', 'preserve-local');
     sessionStorage.setItem('hirehub_admin_auth', 'true');
@@ -64,9 +64,26 @@ describe('App', () => {
     localStorage.setItem('hirehub_submissions', '[]');
     renderApp();
     await user.click(screen.getByRole('link', { name }));
-    expect(screen.getByRole('heading', { name: 'Not Found' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Join Our Team' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Submit Application' })).toBeVisible();
     expect(screen.getByRole('link', { name: 'Apply' })).toHaveAttribute('aria-current', 'page');
     expect(localStorage.getItem('hirehub_submissions')).toBe('[]');
     expect(sessionStorage.length).toBe(0);
+  });
+
+  /** Verify direct Apply entry leaves even corrupt storage untouched until submission. */
+  it('renders the real Apply form without reading or repairing data and returns Home', async () => {
+    localStorage.setItem('hirehub_submissions', '{broken');
+    const set = vi.spyOn(Storage.prototype, 'setItem');
+    const user = userEvent.setup();
+    renderApp('/apply');
+    expect(screen.getByLabelText('Full Name')).toBeVisible();
+    expect(screen.getByLabelText('Email Address')).toHaveAttribute('type', 'email');
+    expect(screen.getByLabelText('Mobile Number')).toHaveAttribute('type', 'tel');
+    expect(screen.getByLabelText('Department of Interest')).toBeVisible();
+    expect(set).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('link', { name: '← Back to Home' }));
+    expect(screen.getByRole('heading', { name: 'Build Your Future With Us' })).toBeVisible();
+    expect(localStorage.getItem('hirehub_submissions')).toBe('{broken');
   });
 });
