@@ -8,14 +8,14 @@ import { test as base, expect } from '@playwright/test';
  * @returns {Promise<void>} Resolve after all evidence is attached.
  */
 export async function capturePreflight(page, testInfo, name) {
-  const tree = await page.accessibility.snapshot({ interestingOnly: false });
+  const tree = await page.locator('body').ariaSnapshot();
   await testInfo.attach(`${name}-accessibility`, {
     body: JSON.stringify(tree, null, 2), contentType: 'application/json',
   });
   const styles = await page.evaluate(
     /** Collect only the computed properties needed to review this Home slice. */
     () => {
-      const selectors = ['body', '.site-header', '.header-inner', '.main-nav', '.main-nav a.active', '.hero', '.hero h1', '.hero p', '.cta-link', '.features h2', '.feature-grid', '.feature-card', '.feature-icon', '.feature-card h3', '.feature-card p', '.bottom-cta', '.demo-notice'];
+      const selectors = ['body', '.site-header', '.header-inner', '.main-nav', '.main-nav a.active', '.hero', '.hero h1', '.hero p', '.cta-link', '.features h2', '.feature-grid', '.feature-card', '.feature-icon', '.feature-card h3', '.feature-card p', '.bottom-cta', '.demo-notice', '.form-card', '.field-error', '.stats-grid', '.table-scroll', '.edit-dialog'];
       const properties = ['color', 'backgroundColor', 'fontFamily', 'fontSize', 'fontWeight', 'opacity', 'position', 'top', 'display', 'gridTemplateColumns', 'gap', 'padding', 'borderTop', 'borderBottom', 'borderRadius', 'boxShadow', 'height', 'minHeight', 'minWidth'];
       return Object.fromEntries(selectors.map(
         /** Read resolved CSS without imposing a subjective style score. */
